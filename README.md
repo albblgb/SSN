@@ -26,5 +26,4 @@ Code for "Steganography of Steganographic Networks"
 2. The results will be saved in 'result/'
 
 
-## Citation
-If you find our paper or code useful for your research, please cite:
+
