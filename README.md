@@ -21,8 +21,9 @@ Code for "Steganography of Steganographic Networks"
 
 - Run `python secret_model_disguising.py`,
 
-- The secret and stego-models will be saved in 'checkpoint/'
-- The results will be saved in 'result/'
+
+1. The secret and stego-models will be saved in 'checkpoint/'
+2. The results will be saved in 'result/'
 
 
 ## Citation
