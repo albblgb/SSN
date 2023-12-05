@@ -12,7 +12,7 @@ from utils.dataset import load_datasets
 from utils.terminal import MetricMonitor
 from utils.logger import logger_info
 from utils.dirs import mkdirs
-from utils.proposed_mothod import secret_model_extraction, side_info_extraction
+from utils.proposed_mothod import secret_model_extraction, side_info_extraction, bn_running_embedding
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,17 +69,19 @@ if __name__ == '__main__':
     logger.info('Loading stego model')
     stego_model = (torch.load(stego_model_path))
 
-    logger.info('Extracting the B_stream form the stego model')
-    B_stream = side_info_extraction(stego_model, key)
+    logger.info('Extracting the B_stream and bn_running info form the stego model')
+    B_stream, bn_running_binary_ext = side_info_extraction(stego_model, key)
 
     logger.info('Extracting the secret sub-model composed by selected filters from the stego model')
     secret_model = secret_model_extraction(stego_model, B_stream)
+
+    logger.info('Recovering the running means and vars of bn layers')      
+    secret_model = bn_running_embedding(secret_model, bn_running_binary_ext)
     secret_model = secret_model.to(device)
 
     logger.info('Testing the extracted secret sub-network')
     criterion = nn.CrossEntropyLoss()
     test(secret_model, secret_test_loader, model_save_path)
-
 
 
     
