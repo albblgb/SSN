@@ -19,9 +19,9 @@ This repo is the official code for
 
 - Run `python secret_model_disguising.py`,
 
-#### Receiver extracting and testing the secret model form the stego-model
+#### Receiver: extracting and testing the secret model form the stego-model
 
-- Run `python secret_model_disguising.py`,
+- Run `python secret_model_extraction.py`,
 
 
 1. The secret and stego-models will be saved in 'checkpoint/'
