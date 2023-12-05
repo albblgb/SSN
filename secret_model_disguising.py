@@ -135,10 +135,7 @@ if __name__ == '__main__':
     stego_train_loader, stego_test_loader = load_datasets('cf-10', bs)
 
     logger.info('Selecting important filters')
-    B_stream, sparse_masks = filter_selection(secret_model, secret_test_loader, stego_test_loader, prop, device)
-
-    # for b_l in B_stream:
-    #     print(len(b_l))
+    B_stream, sparse_masks = filter_selection(secret_model, secret_train_loader, stego_train_loader, prop, device)
 
     logger.info('Extracting the secret sub-model composed by selected filters from the original secret model.')
     sub_model = secret_model_extraction(secret_model, B_stream)
