@@ -137,6 +137,9 @@ if __name__ == '__main__':
     logger.info('Selecting important filters')
     B_stream, sparse_masks = filter_selection(secret_model, secret_train_loader, stego_train_loader, prop, device)
 
+    # for b_l in B_stream:
+    #     print(len(b_l))
+
     logger.info('Extracting the secret sub-model composed by selected filters from the original secret model.')
     sub_model = secret_model_extraction(secret_model, B_stream)
 
@@ -201,4 +204,3 @@ if __name__ == '__main__':
     # logger.info('Testing the extracted secret sub-network')
     # model_save_path = 'checkpoint/extracted_seceret_model/resnet18.pt'
     # test(secret_model, secret_test_loader, model_save_path)
-
