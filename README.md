@@ -1,5 +1,5 @@
 # SSN
-Code for "Steganography of Steganographic Networks"
+PyTorch implementation of "Steganography of Steganographic Networks" (AAAI 2023)
     
 ## Dependencies and Installation
 - Python 3.8.13, PyTorch = 1.11.0
