@@ -119,8 +119,8 @@ def test(model, test_loader, model_save_path):
 
 if __name__ == '__main__':
     lr = 1e-3
-    ep_secret = 1 # 60
-    ep_stego = 1 # 120
+    ep_secret = 2 # 60
+    ep_stego = 2 # 120
     bs = 128 # batch size
     num_classes = 10 # fashion-mnist and cf-10
     prop = 0.81 # The proportion of the selected filters 
