@@ -309,14 +309,15 @@ def side_info_embedding(key, model, B_stream, bn_running_binary):
     # select key-th to (key+nob)-th weights for hosting B_stream
     host_weights = weight_values_stream[key:key+3*nob]
 
-    # each value in the host_weights will be embedded with a bit, and the LSB algorithm is used to embed the bit into the forth decimal place of the weight value.
+    # each value in the host_weights will be embedded with a bit, and the LSB algorithm is used to embed the bit into the sixth decimal place of the weight value.
     weights_resi = torch.zeros_like(host_weights)
     for i in range(nob):
+        # For each bit in B_stream, we embed it three times to ensure accuracy.
         for j in range(3):
+            sdp = int(str(host_weights[3*i+j].item()).split('.')[-1][5])
             # sdp = ((host_weights[3*i+j].abs() * 10000).floor().item()) % 10
-            sdp = ((host_weights[3*i+j].abs() * 10000).floor().item()) % 10
             if (One_dim_B_stream_str[i] == '0' and sdp % 2 == 1) or (One_dim_B_stream_str[i] == '1' and sdp % 2 == 0):
-                weights_resi[3*i+j] += 1e-4
+                weights_resi[3*i+j] += 1e-6
 
     stego_weights = host_weights + weights_resi
 
@@ -353,14 +354,11 @@ def side_info_extraction(model, key):
 
     One_dim_B_stream = torch.zeros(nob)
     for i in range(nob):
-        # # extract the sixth decimal place (sdp)
-        # sdp = int(str(stego_weights[i].item()).split('.')[-1][3])
-        # if sdp % 2 == 1:
-        #     One_dim_B_stream[i] = 1.
         count = 0
+        # For each bit in B_stream, we embed it three times to ensure accuracy.
         for j in range(3):
-            # sdp = int(str(stego_weights[3*i+j].item()).split('.')[-1][3])
-            sdp = ((stego_weights[3*i+j].abs() * 10000).floor().item()) % 10
+            sdp = int(str(stego_weights[3*i+j].item()).split('.')[-1][5])
+            # sdp = ((stego_weights[3*i+j].abs() * 10000).floor().item()) % 10
             if sdp % 2 == 1:
                 count += 1
         if count >= 2:
@@ -389,8 +387,9 @@ def side_info_extraction(model, key):
     for i in range(nob_bnr):
         # extract the sixth decimal place (sdp)
         count = 0
+        # For each bit in B_stream, we embed it three times to ensure accuracy.
         for j in range(3):
-            sdp = int(str(stego_weights[3*i+j].item()).split('.')[-1][3])
+            sdp = int(str(stego_weights[3*i+j].item()).split('.')[-1][5])
             if sdp % 2 == 1:
                 count += 1
         if count >= 2:
