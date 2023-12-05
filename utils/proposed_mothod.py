@@ -290,7 +290,7 @@ def secret_model_embedding(model, tuned_sub_model, B_stream, sparse_masks):
     return model
 
 
-def side_info_embedding(model, B_stream, key):
+def side_info_embedding(key, model, B_stream, bn_running_binary):
     '''
     embedding B_stream into the stego-model
     '''
@@ -298,23 +298,29 @@ def side_info_embedding(model, B_stream, key):
     One_dim_B_stream = torch.Tensor([])
     for b_l in B_stream:
         One_dim_B_stream = torch.concat((One_dim_B_stream, b_l), dim=0)
-    nob = One_dim_B_stream.shape[0] # the number of bits
+    
+    One_dim_B_stream_str = ''
+    for elem in One_dim_B_stream:
+        One_dim_B_stream_str += str(int(elem.item()))
+    One_dim_B_stream_str += bn_running_binary
+    nob = len(One_dim_B_stream_str) # the number of bits
 
     weight_values_stream = host_weight_extraction(model)
     # select key-th to (key+nob)-th weights for hosting B_stream
-    host_weights = weight_values_stream[key:key+nob]
+    host_weights = weight_values_stream[key:key+3*nob]
 
-    # each value in the host_weights will be embedded with a bit, and the LSB algorithm is used to embed the bit into the fourth decimal place of the weight value.
+    # each value in the host_weights will be embedded with a bit, and the LSB algorithm is used to embed the bit into the forth decimal place of the weight value.
     weights_resi = torch.zeros_like(host_weights)
-    for i in range(len(host_weights)):
-        # extract the sixth decimal place (sdp)
-        sdp = int(str(host_weights[i].item()).split('.')[-1][3])
-        if (One_dim_B_stream[i] == 0 and sdp % 2 == 1) or (One_dim_B_stream[i] == 1 and sdp % 2 == 0):
-            weights_resi[i] += 1e-4
+    for i in range(nob):
+        for j in range(3):
+            # sdp = ((host_weights[3*i+j].abs() * 10000).floor().item()) % 10
+            sdp = ((host_weights[3*i+j].abs() * 10000).floor().item()) % 10
+            if (One_dim_B_stream_str[i] == '0' and sdp % 2 == 1) or (One_dim_B_stream_str[i] == '1' and sdp % 2 == 0):
+                weights_resi[3*i+j] += 1e-4
 
     stego_weights = host_weights + weights_resi
 
-    weight_values_stream[key:key+nob] = stego_weights
+    weight_values_stream[key:key+3*nob] = stego_weights
     
     # Feedback the changes of weights to model's parameters to complete embedding.
     start_idx = 0
@@ -333,25 +339,33 @@ def side_info_extraction(model, key):
     '''
     
     len_B = [] # a list that records the lenght of b_1, b_2..., b_L in B_stream
-    for m in list(model.modules()):
-        if isinstance(m, nn.Conv2d):
+    for k, m in list(model.named_modules()):
+        if isinstance(m, nn.Conv2d) and 'shortcut' not in k:
             len_l = m.weight.shape[0]
             len_B.append(len_l)
-    
-    nob = np.sum(np.array(len_B)) # the number of bits
-    
+
+    nob = np.sum(np.array(len_B)) # the number of bits in B_stream
+
     weight_values_stream = host_weight_extraction(model)
 
     # select key-th to (key+nob)-th weights for extracting B_stream
-    stego_weights = weight_values_stream[key:key+nob]
+    stego_weights = weight_values_stream[key:key+3*nob]
 
     One_dim_B_stream = torch.zeros(nob)
-    for i in range(len(stego_weights)):
-        # extract the sixth decimal place (sdp)
-        sdp = int(str(stego_weights[i].item()).split('.')[-1][3])
-        if sdp % 2 == 1:
-            One_dim_B_stream[i] = 1.
-
+    for i in range(nob):
+        # # extract the sixth decimal place (sdp)
+        # sdp = int(str(stego_weights[i].item()).split('.')[-1][3])
+        # if sdp % 2 == 1:
+        #     One_dim_B_stream[i] = 1.
+        count = 0
+        for j in range(3):
+            # sdp = int(str(stego_weights[3*i+j].item()).split('.')[-1][3])
+            sdp = ((stego_weights[3*i+j].abs() * 10000).floor().item()) % 10
+            if sdp % 2 == 1:
+                count += 1
+        if count >= 2:
+            One_dim_B_stream[i] = 1
+    
     B_stream = []
     len_B.append(0)
     start = 0; end = len_B[0]
@@ -361,7 +375,31 @@ def side_info_extraction(model, key):
         B_stream.append(b_l)
         start += len_B[l]; end += len_B[l+1]
 
-    return B_stream
+    # extract the running_mean and running_var of the bn layers
+    nob_bnr = int(One_dim_B_stream.sum().item() * 24 * 2) # the number of bits in bn running_mean and running_var
+
+    
+    connection_points = [[4, 6], [8, 10], [12, 14]] # for resnet18 which has 3 shortcuts that consists of conv and bn layers， the first shortcut skips from the (4+1)-th to the (6+1)-th layers of backbone.
+    for i in range(len(connection_points)):
+        nob_bnr_sc = int(B_stream[connection_points[i][1]].sum().item() * 24 * 2)
+        nob_bnr += nob_bnr_sc
+
+    stego_weights = weight_values_stream[(key+3*nob):(key+3*(nob+nob_bnr))]
+    bn_running_binary = ''
+    for i in range(nob_bnr):
+        # extract the sixth decimal place (sdp)
+        count = 0
+        for j in range(3):
+            sdp = int(str(stego_weights[3*i+j].item()).split('.')[-1][3])
+            if sdp % 2 == 1:
+                count += 1
+        if count >= 2:
+            bn_running_binary += '1'
+        else:
+            bn_running_binary += '0'
+    
+    return B_stream, bn_running_binary
+
 
 
 def host_weight_extraction(model):
@@ -370,14 +408,137 @@ def host_weight_extraction(model):
     for k, m in list(model.named_modules()):
         if isinstance(m, nn.Conv2d) and 'shortcut' not in k:
             weight_values_stream = torch.concat((weight_values_stream, m.weight.data.clone().view(-1).cpu()))
-            if m.bias != None:
-                weight_values_stream = torch.concat((weight_values_stream, m.bias.data.clone().view(-1).cpu()))
+            # if m.bias != None:
+            #     weight_values_stream = torch.concat((weight_values_stream, m.bias.data.clone().view(-1).cpu()))
     return weight_values_stream
 
 
 
 
+def bn_running_extraction(model):
+    bn_running = torch.tensor([])
+    for k, m in model.named_modules():
+        if isinstance(m, nn.BatchNorm2d):
+            bn_running = torch.concat((bn_running, m.running_mean.clone().cpu()))
+            bn_running = torch.concat((bn_running, m.running_var.clone().cpu()))
 
+    non = bn_running.shape[0] # number of neurons in bn_running_mean and bn_running_var
+
+    bn_running_binary = ''
+    for i in range(non):
+        # We discard the last 8 bits of the binary mantissa [26:34], introducing negligible errors that do not affect the network's performance.
+        binary = (ConvertFloatToBinary(bn_running[i].item()))[2:26]
+        
+        binary_list = list(binary)
+        for j in range(len(binary_list)): 
+            if binary_list[j] != '0' and binary_list[j] != '1':
+                binary_list[j] = '0'
+                binary = ''.join(binary_list)
+        
+        bn_running_binary = bn_running_binary + binary
+
+    return bn_running_binary
+
+
+def bn_running_embedding(model, bn_running_binary):
+
+    one_dim_bn_running = []
+    for i in range(len(bn_running_binary)//24):
+        binary = bn_running_binary[24*i:24*(i+1)] + '00000000'
+        br_value = ConvertBinartToFloat(binary)
+        one_dim_bn_running.append(br_value) 
+    one_dim_bn_running = torch.from_numpy(np.array(one_dim_bn_running)).float()
+
+    start_idx = 0
+    for m in list(model.modules()):
+        if isinstance(m, nn.BatchNorm2d):
+            num_weights_in_m = m.weight.numel()
+            m.running_mean = one_dim_bn_running[start_idx:start_idx+num_weights_in_m].view(m.weight.shape)
+            start_idx += num_weights_in_m
+            m.running_var = one_dim_bn_running[start_idx:start_idx+num_weights_in_m].view(m.weight.shape)
+            start_idx += num_weights_in_m
+
+    return model
+
+
+
+
+''' float32 to IEEE 754 binary string '''
+def ConvertFixedIntegerToComplement(fixedInterger) :#浮点数整数部分转换成补码(整数全部为正)
+    return bin(fixedInterger)[2:]
+ 
+def ConvertFixedDecimalToComplement(fixedDecimal) :#浮点数小数部分转换成补码
+    fixedpoint = int(float(fixedDecimal)) / (10.0**len(fixedDecimal))
+    s = ''
+    while fixedDecimal != 1.0 and len(s) < 23 :
+        fixedpoint = fixedpoint * 2.0
+        s += str(fixedpoint)[0]
+        fixedpoint = fixedpoint if str(fixedpoint)[0] == '0' else fixedpoint - 1.0
+    return s
+ 
+def ConvertToExponentMarker(number) : #阶码生成
+    return bin(number + 127)[2:].zfill(8)
+ 
+ 
+def ConvertFloatToBinary(floatingPoint) :#转换成IEEE754标准的数
+    floatingPointString = str(floatingPoint)
+    if floatingPointString.find('-') != -1 :#判断符号位
+        sign = '1'
+        floatingPointString = floatingPointString[1:]
+    else :
+        sign = '0'
+    l = floatingPointString.split('.')#将整数和小数分离
+    # front = ConvertFixedIntegerToComplement(int(float(l[0])))#返回整数补码
+    front = ConvertFixedIntegerToComplement(int(l[0]))#返回整数补码
+    rear  = ConvertFixedDecimalToComplement(l[1])#返回小数补码
+    floatingPointString = front + '.' + rear #整合
+    relativePos =   floatingPointString.find('.') - floatingPointString.find('1')#获得字符1的开始位置
+    if relativePos > 0 :#若小数点在第一个1之后
+        exponet = ConvertToExponentMarker(relativePos-1)#获得阶码
+        mantissa =  floatingPointString[floatingPointString.find('1')+1 : floatingPointString.find('.')]  + floatingPointString[floatingPointString.find('.') + 1 :] # 获得尾数
+    else :
+        exponet = ConvertToExponentMarker(relativePos)#获得阶码
+        mantissa = floatingPointString[floatingPointString.find('1') + 1: ]  # 获得尾数
+    mantissa =  mantissa[:23] + '0' * (23 - len(mantissa))
+    floatingPointString = '0b' + sign + exponet + mantissa
+    return floatingPointString
+    # return hex( int( floatingPointString , 2 ) )
+ 
+''' IEEE 754 binary string to float32 '''
+def ConvertExponent(strData):#阶码转整数
+    return int(strData,2)-127
+
+def ConverComplementToFixedDecimal(fixedStr):#字符串转小数
+    count=1
+    num=0
+    for ch in fixedStr:
+        if ch=="1":
+            num+=2**(-count)
+        count+=1
+    return num
+
+def ConverComplementToInteger(fixedStr):#字符串转整数
+    return int(fixedStr,2)
+    
+def ConvertBinartToFloat(binStr): #IEEE754 浮点字符串转float
+	# if strData=="00000000":
+    #     return 0.0
+    # binStr="".join(hex2bin_map[i] for i in strData)
+    sign = binStr[0]
+    exponet=binStr[1:9]#阶码
+    mantissa="1"+binStr[9:]#尾数
+    fixedPos=ConvertExponent(exponet)
+    if fixedPos>=0: #小数点在1后面
+        fixedDec=ConverComplementToFixedDecimal(mantissa[fixedPos+1:])#小数转换
+        fixedInt=ConverComplementToInteger(mantissa[:fixedPos+1])#整数转换
+    else: #小数点在1前面（原数在[-0.99,0.99]范围内)
+        mantissa="".zfill(-fixedPos)+mantissa
+        fixedDec=ConverComplementToFixedDecimal(mantissa[1:])#小数转换
+        fixedInt=ConverComplementToInteger(mantissa[0])#整数转换
+    fixed=fixedInt+fixedDec
+    if sign=="1":
+        fixed=-fixed
+    return fixed
 
 
 
