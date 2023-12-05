@@ -1,6 +1,8 @@
-# SSN
-PyTorch implementation of "Steganography of Steganographic Networks" (AAAI 2023)
-    
+# Steganography of Steganographic Networks
+This repo is the official code for
+
+* [**Steganography of Steganographic Networks.**](https://ojs.aaai.org/index.php/AAAI/article/view/25647) 
+
 ## Dependencies and Installation
 - Python 3.8.13, PyTorch = 1.11.0
 - Run the following commands in your terminal:
