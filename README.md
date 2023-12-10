@@ -25,7 +25,7 @@ This repo is the official code for
 
 
 1. The secret and stego-models will be saved in 'checkpoint/'
-2. The results will be saved in 'result/'
+2. The results will be saved in 'results/'
 
 ## Others
 [**VGG11**](https://github.com/albblgb/SSN/tree/main/VGG11) is a simplified version that employs VGG11 as the backbone, excluding batch normalization layers and skip connections (shortcuts). To understand our code, we recommend you starting with VGG11.
