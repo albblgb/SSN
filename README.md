@@ -29,6 +29,7 @@ This repo is the official code for
 
 ## Others
 [**VGG11**](https://github.com/albblgb/SSN/tree/main/VGG11) is a simplified version that employs VGG11 as the backbone, excluding batch normalization layers and skip connections (shortcuts). To understand our code, we recommend you starting with VGG11.
+
 We are organizing the code about "HiDDeN" and plan to upload it in the near future.
 
 ## Citation
